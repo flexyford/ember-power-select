@@ -1188,7 +1188,7 @@ module('Integration | Component | Ember Power Select (General behavior)', functi
       let promise = new RSVP.Promise((resolve) => {
         setTimeout(() => resolve(['one', 'two', 'three']), 500);
       });
-      this.set('options', PromiseArrayProxy.create({ content: [], promise }));
+      this.set('options', PromiseArrayProxy.create({ promise }));
     };
 
     await render(hbs`
@@ -1219,19 +1219,13 @@ module('Integration | Component | Ember Power Select (General behavior)', functi
   });
 
   test('Constant PromiseProxy references are tracked when .content changes', async function(assert) {
-    let initial = null;
-    //initial = countries[1];
-    this.proxy = PromiseObject.create({content: initial, promise: Promise.resolve(initial)});
-    //this.proxy = ObjectProxy.create({content: initial});
-    //ObjectProxy does work, because they are not 'unpacked' by the .then
-    // and the {{#if select.selected}} in the trigger will correctly call the ObjectProxy.isTruthy
-    // which will setup the dep chain
+    let deferred = RSVP.defer();
+    this.proxy = PromiseObject.create({ promise: deferred.promise });
     this.countries = countries;
+
+    let nextValues = [countries[1], null];
     this.updateProxy = () => {
-      //this.set('proxy', countries[0]);
-      //this.set('proxy', PromiseObject.create({content: countries[0], promise: Promise.resolve(countries[0])}));
-      this.proxy.set('content', countries[0]);
-      this.proxy.set('promise', Promise.resolve(countries[0]));
+      this.proxy.set('content', nextValues.shift());
     };
 
     await render(hbs`
@@ -1243,11 +1237,19 @@ module('Integration | Component | Ember Power Select (General behavior)', functi
     `);
 
     assert.dom('.ember-power-select-option[aria-selected="true"]').doesNotExist('no element is selected');
-    assert.dom('.ember-power-select-trigger').hasText(initial ? initial.name : '', 'Nothing is selected yet');
+    assert.dom('.ember-power-select-trigger').hasText('', 'Nothing is selected when promise is pending');
+
+    deferred.resolve(countries[0]);
+    await settled();
+
+    assert.dom('.ember-power-select-trigger').hasText(countries[0].name, 'The trigger is initialized to the resolved promise value');
 
     await click('#update-proxy-btn');
-    assert.dom('.ember-power-select-trigger').hasText(countries[0].name, 'The trigger has the proper content');
 
-    //TODO: also try starting from non-null value and maybe also going back to null?
+    assert.dom('.ember-power-select-trigger').hasText(countries[1].name, 'The trigger is updated when content changes');
+
+    await click('#update-proxy-btn');
+
+    assert.dom('.ember-power-select-trigger').hasText('', 'The trigger is blank when content is cleared');
   });
 });
